@@ -19,6 +19,14 @@ type MsgAssociate struct {
 	IdKey string `json:"idKey"`
 }
 
+type ResAssociate struct {
+	Hash    string `json:"hash"`
+	Version string `json:"version"`
+	Success string `json:"success"`
+	Id      string `json:"id"`
+	Nonce   string `json:"nonce"`
+}
+
 type MsgTestAssociate struct {
 	action
 	key

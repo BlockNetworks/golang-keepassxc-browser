@@ -9,12 +9,17 @@ import (
 type Identity struct {
 	ClientId     string
 	IdKey        sodium.BoxPublicKey
+	AId          string
 	keyPair      sodium.BoxKP
 	serverPubKey sodium.BoxPublicKey
 }
 
+func (i *Identity) GetIdKey() (pubKey string) {
+	return base64.StdEncoding.EncodeToString(i.IdKey.Bytes)
+}
+
 func (i *Identity) GetPubKey() (pubKey string) {
-	return base64.StdEncoding.EncodeToString(SodiumBytesToByte(i.keyPair.PublicKey))
+	return base64.StdEncoding.EncodeToString(i.keyPair.PublicKey.Bytes)
 }
 
 func (i *Identity) SetServerPubKey(serverPubKey string) (err error) {
@@ -23,29 +28,39 @@ func (i *Identity) SetServerPubKey(serverPubKey string) (err error) {
 		return err
 	}
 
-	i.serverPubKey.Bytes = ByteToSodiumBytes(skey)
+	i.serverPubKey.Bytes = skey
 	return nil
 }
 
-func (i *Identity) GetSignedMsgTransport(reqAction string) (msgTransport *msgBaseTransport) {
-	msgTransport = &msgBaseTransport{}
-	msgTransport.Action = reqAction
-	msgTransport.nonce = sodium.BoxNonce{}
-	sodium.Randomize(&msgTransport.nonce)
+func (i *Identity) GetSignedMessage(reqAction string) (msg map[string]interface{}) {
+	msg = make(map[string]interface{})
 
-	msgTransport.Nonce = base64.StdEncoding.EncodeToString(SodiumBytesToByte(msgTransport.nonce))
-	msgTransport.ClientId = i.ClientId
+	nonce := sodium.BoxNonce{}
+	sodium.Randomize(&nonce)
 
-	return msgTransport
+	msg["action"] = reqAction
+	msg["nonce"] = base64.StdEncoding.EncodeToString(nonce.Bytes)
+	msg["clientID"] = i.ClientId
+
+	return msg
 }
 
-func (i *Identity) EncryptMessage(msg []byte, nonce sodium.BoxNonce) (emsg string) {
-	smsg := ByteToSodiumBytes(msg)
+func (i *Identity) Encrypt(nonce sodium.BoxNonce, msg []byte) (emsg string, err error) {
+	smsg := sodium.Bytes(msg)
 	semsg := smsg.Box(nonce, i.serverPubKey, i.keyPair.SecretKey)
+	emsg = base64.StdEncoding.EncodeToString(semsg)
 
-	emsg = base64.StdEncoding.EncodeToString(SodiumBytesToByte(semsg))
+	return emsg, err
+}
 
-	return emsg
+func (i *Identity) Decrypt(nonce sodium.BoxNonce, jemsg string) (msg []byte, err error) {
+	emsg, err := base64.StdEncoding.DecodeString(jemsg)
+	if err != nil {
+		return msg, err
+	}
+
+	semsg := sodium.Bytes(emsg)
+	return semsg.BoxOpen(nonce, i.serverPubKey, i.keyPair.SecretKey)
 }
 
 func NewIdentity(clientId string) (ret *Identity, err error) {
