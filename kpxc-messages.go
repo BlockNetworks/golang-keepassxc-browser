@@ -1,25 +1,26 @@
 package keepassxc_browser
 
-type action struct {
-	Action string `json:"action"`
+type Action struct {
+	ActionName string `json:"action"`
 }
 
-type key struct {
-	Id  string `json:"id"`
-	Key string `json:"key"`
+type MsgPublicKey struct {
+	PubKey string `json:"publicKey"`
 }
 
 type MsgGetDatabasehash struct {
-	action
+	Action
 }
 
-type MsgAssociate struct {
-	action
+type MsgReqAssociate struct {
+	BaseRequest
+	Action
 	Key   string `json:"key"`
 	IdKey string `json:"idKey"`
 }
 
-type ResAssociate struct {
+type MsgResAssociate struct {
+	BaseResponse
 	Hash    string `json:"hash"`
 	Version string `json:"version"`
 	Success string `json:"success"`
@@ -27,21 +28,63 @@ type ResAssociate struct {
 	Nonce   string `json:"nonce"`
 }
 
-type MsgTestAssociate struct {
-	action
-	key
+type MsgReqTestAssociate struct {
+	BaseRequest
+	Action
+	Id  string `json:"id"`
+	Key string `json:"key"`
 }
 
-type MsgGetLogins struct {
-	action
+type MsgReqGeneratePassword struct {
+	Action
+	Nonce     string `json:"nonce"`
+	ClientId  string `json:"clientID"`
+	RequestId string `json:"requestID,omitempty"`
+}
+
+type MsgResGeneratePassword struct {
+	Action
+	Password string `json:"password"`
+	Version  string `json:"version"`
+	Success  string `json:"success"`
+	Nonce    string `json:"nonce"`
+}
+
+type key struct {
+	Id  string `json:"id"`
+	Key string `json:"key"`
+}
+
+type MsgReqGetLogins struct {
+	BaseRequest
+	Action
 	Url       string `json:"url"`
 	SubmitUrl string `json:"submitUrl,omitempty"`
 	HttpAuth  string `json:"httpAuth,omitempty"`
 	Keys      []key  `json:"keys"`
 }
 
+type LoginEntry struct {
+	Login        string              `json:"login"`
+	Name         string              `json:"name"`
+	Password     string              `json:"password"`
+	Expired      string              `json:"expired,omitempty"`
+	Uuid         string              `json:"uuid"`
+	StringFields []map[string]string `json:"stringFields"`
+}
+
+type MsgResGetLogins struct {
+	BaseResponse
+	Entries []LoginEntry `json:"entries"`
+	Count   int          `json:"count"`
+	Hash    string       `json:"hash"`
+	Version string       `json:"version"`
+	Success string       `json:"success"`
+	Nonce   string       `json:"nonce"`
+}
+
 type MsgSetLogin struct {
-	action
+	Action
 	Url             string `json:"url"`
 	SubmitUrl       string `json:"submitUrl"`
 	Id              string `json:"id"`
@@ -55,24 +98,24 @@ type MsgSetLogin struct {
 }
 
 type MsgLockDatabase struct {
-	action
+	Action
 }
 
 type MsgGetDatabaseGroups struct {
-	action
+	Action
 }
 
 type MsgCreateNewGroup struct {
-	action
+	Action
 	GroupName string `json:"groupName"`
 }
 
 type MsgGetTotp struct {
-	action
+	Action
 	Uuid string `json:"uuid"`
 }
 
 type MsgRequestAutotype struct {
-	action
+	Action
 	Search string `json:"search"`
 }

@@ -3,6 +3,7 @@ package keepassxc_browser
 import (
 	"fmt"
 	"net"
+	"time"
 )
 
 type PosixConnection struct {
@@ -31,15 +32,30 @@ func (conn *PosixConnection) Send(message []byte) (err error) {
 	return err
 }
 
-func (conn *PosixConnection) Recv(bufsize int) (ret []byte, err error) {
+func (conn *PosixConnection) Recv(bufsize int, timeout int) (ret []byte, err error) {
 	if conn.c == nil {
 		return nil, fmt.Errorf("No connection established")
 	}
+	fmt.Printf("timeout: %d\n", timeout)
 
 	ret = make([]byte, bufsize)
+	if timeout > 0 {
+		conn.c.SetReadDeadline(time.Now().Add(time.Duration(time.Second * time.Duration(timeout))))
+	}
 	n, err := conn.c.Read(ret)
 	if err != nil {
 		return nil, err
+	}
+
+	// stupid protocol....
+	if n == 2 {
+		if timeout > 0 {
+			conn.c.SetReadDeadline(time.Now().Add(time.Duration(time.Second * time.Duration(timeout))))
+		}
+		n, err = conn.c.Read(ret)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return ret[:n], err
