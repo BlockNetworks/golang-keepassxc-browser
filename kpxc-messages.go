@@ -14,7 +14,6 @@ type MsgGetDatabasehash struct {
 
 type MsgReqAssociate struct {
 	BaseRequest
-	Action
 	Key   string `json:"key"`
 	IdKey string `json:"idKey"`
 }
@@ -30,13 +29,12 @@ type MsgResAssociate struct {
 
 type MsgReqTestAssociate struct {
 	BaseRequest
-	Action
 	Id  string `json:"id"`
 	Key string `json:"key"`
 }
 
 type MsgReqGeneratePassword struct {
-	Action
+	BaseRequest
 	Nonce     string `json:"nonce"`
 	ClientId  string `json:"clientID"`
 	RequestId string `json:"requestID,omitempty"`
@@ -57,7 +55,6 @@ type key struct {
 
 type MsgReqGetLogins struct {
 	BaseRequest
-	Action
 	Url       string `json:"url"`
 	SubmitUrl string `json:"submitUrl,omitempty"`
 	HttpAuth  string `json:"httpAuth,omitempty"`

@@ -46,6 +46,14 @@ func (i *Identity) SignRequest(reqAction string, req *BaseRequest) {
 	req.ActionName = reqAction
 }
 
+func (i *Identity) SignReq(reqAction string, req ReqI) {
+	nonce := sodium.BoxNonce{}
+	sodium.Randomize(&nonce)
+	req.SetNonce(nonce)
+	req.SetClientId(i.ClientId)
+	req.SetAction(reqAction)
+}
+
 func (i *Identity) Encrypt(nonce sodium.BoxNonce, msg []byte) (emsg string, err error) {
 	smsg := sodium.Bytes(msg)
 	semsg := smsg.Box(nonce, i.serverPubKey, i.keyPair.SecretKey)
