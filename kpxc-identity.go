@@ -39,37 +39,13 @@ func (i *Identity) SetServerPubKey(serverPubKey string) (err error) {
 	return nil
 }
 
-func (i *Identity) SignRequest(reqAction string, req *BaseRequest) {
-	sodium.Randomize(&req.nonce)
-	req.Nonce = base64.StdEncoding.EncodeToString(req.nonce.Bytes)
-	req.ClientId = i.ClientId
-	req.ActionName = reqAction
-}
-
 func (i *Identity) SignReq(reqAction string, req ReqI) {
 	nonce := sodium.BoxNonce{}
 	sodium.Randomize(&nonce)
 	req.SetNonce(nonce)
 	req.SetClientId(i.ClientId)
 	req.SetAction(reqAction)
-}
-
-func (i *Identity) Encrypt(nonce sodium.BoxNonce, msg []byte) (emsg string, err error) {
-	smsg := sodium.Bytes(msg)
-	semsg := smsg.Box(nonce, i.serverPubKey, i.keyPair.SecretKey)
-	emsg = base64.StdEncoding.EncodeToString(semsg)
-
-	return emsg, err
-}
-
-func (i *Identity) Decrypt(nonce sodium.BoxNonce, jemsg string) (msg []byte, err error) {
-	emsg, err := base64.StdEncoding.DecodeString(jemsg)
-	if err != nil {
-		return msg, err
-	}
-
-	semsg := sodium.Bytes(emsg)
-	return semsg.BoxOpen(nonce, i.serverPubKey, i.keyPair.SecretKey)
+	req.SetRequestId(GenerateRequestID())
 }
 
 func (i *Identity) SaveAssoc(file string) (err error) {

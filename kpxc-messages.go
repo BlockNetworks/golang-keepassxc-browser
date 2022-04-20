@@ -4,6 +4,15 @@ type Action struct {
 	ActionName string `json:"action"`
 }
 
+type MsgBase struct {
+	Action
+	Hash    string `json:"hash"`
+	Version string `json:"version"`
+	Success string `json:"success"`
+	Id      string `json:"id"`
+	Nonce   string `json:"nonce"`
+}
+
 type MsgPublicKey struct {
 	PubKey string `json:"publicKey"`
 }
@@ -13,39 +22,32 @@ type MsgGetDatabasehash struct {
 }
 
 type MsgReqAssociate struct {
-	BaseRequest
+	Action
 	Key   string `json:"key"`
 	IdKey string `json:"idKey"`
 }
 
 type MsgResAssociate struct {
-	BaseResponse
-	Hash    string `json:"hash"`
-	Version string `json:"version"`
-	Success string `json:"success"`
-	Id      string `json:"id"`
-	Nonce   string `json:"nonce"`
+	MsgBase
 }
 
 type MsgReqTestAssociate struct {
-	BaseRequest
+	Action
 	Id  string `json:"id"`
 	Key string `json:"key"`
 }
 
+type MsgResTestAssociate struct {
+	MsgBase
+}
+
 type MsgReqGeneratePassword struct {
-	BaseRequest
-	Nonce     string `json:"nonce"`
-	ClientId  string `json:"clientID"`
-	RequestId string `json:"requestID,omitempty"`
+	Action
 }
 
 type MsgResGeneratePassword struct {
-	Action
+	MsgBase
 	Password string `json:"password"`
-	Version  string `json:"version"`
-	Success  string `json:"success"`
-	Nonce    string `json:"nonce"`
 }
 
 type key struct {
@@ -54,7 +56,7 @@ type key struct {
 }
 
 type MsgReqGetLogins struct {
-	BaseRequest
+	Action
 	Url       string `json:"url"`
 	SubmitUrl string `json:"submitUrl,omitempty"`
 	HttpAuth  string `json:"httpAuth,omitempty"`
@@ -71,13 +73,9 @@ type LoginEntry struct {
 }
 
 type MsgResGetLogins struct {
-	BaseResponse
+	MsgBase
 	Entries []LoginEntry `json:"entries"`
 	Count   int          `json:"count"`
-	Hash    string       `json:"hash"`
-	Version string       `json:"version"`
-	Success string       `json:"success"`
-	Nonce   string       `json:"nonce"`
 }
 
 type MsgSetLogin struct {

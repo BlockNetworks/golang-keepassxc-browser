@@ -1,7 +1,6 @@
 package keepassxc_browser
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -115,7 +114,6 @@ func (r *res) IsSuccess() bool {
 }
 func (r res) GetError() string { return r.Error }
 
-//func (r res) GetErrorCode() int  { return r.ErrorCode }
 func (r *res) GetErrorCode() int {
 	if ec, err := strconv.Atoi(r.ErrorCode); err != nil {
 		return 0
@@ -128,58 +126,46 @@ func (r *res) GetVersion() string      { return r.Version }
 func (r *res) GetRes() interface{}     { return r.data }
 func (r *res) SetRes(data interface{}) { r.data = data }
 
-type RequestI interface {
-	GetTimeout() int
-	GetAction() string
+type encReq struct {
+	req
+	Message string `json:"message"`
 }
 
-type BaseRequest struct {
-	Action
-	Nonce     string `json:"nonce,omitempty"`
-	ClientId  string `json:"clientID,omitempty"`
-	RequestId string `json:"requestID,omitempty"`
-	nonce     sodium.BoxNonce
-	timeout   int
-}
-
-func (br *BaseRequest) GetAction() string { return br.ActionName }
-func (br *BaseRequest) GetTimeout() int   { return br.timeout }
-
-type BaseResponse struct {
-	Action
-	Nonce     string `json:"nonce,omitempty"`
-	ClientId  string `json:"clientID,omitempty"`
-	Success   string `json:"success,omitempty"`
-	Error     string `json:"error,omitempty"`
-	ErrorCode string `json:"errorCode,omitempty"`
-	Version   string `json:"version,omitempty"`
-	nonce     sodium.BoxNonce
-}
-
-func (br *BaseResponse) ValidateNonce(cnonce sodium.BoxNonce) bool {
-	var err error
-	if len(br.nonce.Bytes) == 0 {
-		if br.nonce.Bytes, err = base64.StdEncoding.DecodeString(br.Nonce); err != nil {
-			return false
-		}
+func (r *encReq) Encrypt(identity *Identity, req interface{}) (err error) {
+	jreq, err := json.Marshal(req)
+	if err != nil {
+		return err
 	}
+	smsg := sodium.Bytes(jreq)
+	semsg := smsg.Box(r.nonce, identity.serverPubKey, identity.keyPair.SecretKey)
+	r.Message = base64.StdEncoding.EncodeToString(semsg)
 
-	cnonce.Next()
-	if bytes.Compare(cnonce.Bytes, br.nonce.Bytes) == 0 {
-		return true
-	}
-
-	return false
-}
-
-func (br *BaseResponse) ParseNonce() (err error) {
-	br.nonce.Bytes, err = base64.StdEncoding.DecodeString(br.Nonce)
 	return err
 }
 
-type PubKeyRequest struct {
-	BaseRequest
-	MsgPublicKey
+type encRes struct {
+	res
+	Message string `json:"message"`
+}
+
+func (r *encRes) Decrypt(identity *Identity, res interface{}) (err error) {
+	nonce, err := r.GetNonce()
+	if err != nil {
+		return err
+	}
+
+	emsg, err := base64.StdEncoding.DecodeString(r.Message)
+	if err != nil {
+		return err
+	}
+
+	semsg := sodium.Bytes(emsg)
+	jres, err := semsg.BoxOpen(nonce, identity.serverPubKey, identity.keyPair.SecretKey)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(jres, &res)
 }
 
 type PubKeyRes struct {
@@ -187,47 +173,9 @@ type PubKeyRes struct {
 	MsgPublicKey
 }
 
-type PubKeyResponse struct {
-	BaseResponse
-	MsgPublicKey
-}
-
-type EncRequest struct {
-	BaseRequest
-	Message interface{} `json:"message"`
-}
-
-type EncResponse struct {
-	BaseResponse
-	Message string `json:"message"`
-}
-
 type Connection struct {
 	serverAddress string
 	conn          ConnectionI
-}
-
-func (c *Connection) sendRequest(req RequestI, res interface{}) (err error) {
-	jreq, err := json.Marshal(req)
-	if err != nil {
-		return err
-	}
-
-	if err = c.conn.Send(jreq); err != nil {
-		return err
-	}
-
-	jres, err := c.conn.Recv(BufSize, req.GetTimeout())
-	if err != nil {
-		return err
-	}
-	fmt.Printf("jres: %v\n", string(jres))
-
-	if err = json.Unmarshal(jres, &res); err != nil {
-		return err
-	}
-
-	return err
 }
 
 func (c *Connection) sendReq(req ReqI, res ResI) (err error) {
@@ -261,63 +209,31 @@ func (c *Connection) sendReq(req ReqI, res ResI) (err error) {
 	}
 
 	fmt.Printf("S: %v\n", v.IsSuccess())
-	if v.GetError() != "" || !v.IsSuccess() {
-		return fmt.Errorf("Error exchanging keys: %s (code: %d)", v.GetError(), v.GetErrorCode())
+	if v.GetError() != "" && !v.IsSuccess() {
+		return fmt.Errorf("Error: %s (code: %d)", v.GetError(), v.GetErrorCode())
 	}
 
 	return err
 }
 
-func (c *Connection) sendEncRequest(identity *Identity, reqId string, req RequestI, res interface{}) (err error) {
-	breq := BaseRequest{}
-	breq.timeout = req.GetTimeout()
-	identity.SignRequest(req.GetAction(), &breq)
+func (c *Connection) sendEncReq(identity *Identity, reqName string, req interface{}, res interface{}) (err error) {
+	breq := encReq{}
+	identity.SignReq(reqName, &breq)
+	breq.SetTimeout(30)
 
-	if reqId != "" {
-		breq.RequestId = reqId
-	}
-
-	jreq, err := json.Marshal(req)
-	if err != nil {
+	if err = breq.Encrypt(identity, req); err != nil {
 		return err
 	}
-	ereq := EncRequest{
-		breq,
-		"",
-	}
+	breq.SetReq(&breq)
 
-	if ereq.Message, err = identity.Encrypt(breq.nonce, jreq); err != nil {
-		return err
-	}
-
-	bres := EncResponse{}
-	if err = c.sendRequest(&ereq, &bres); err != nil {
+	bres := encRes{}
+	bres.SetRes(&bres)
+	if err = c.sendReq(&breq, &bres); err != nil {
 		return err
 	}
 	fmt.Printf("bres: %v\n", bres)
 
-	if bres.Error != "" {
-		return fmt.Errorf("Error sending request: %s (code: %s)", bres.Error, bres.ErrorCode)
-	}
-	if err = bres.ParseNonce(); err != nil {
-		return err
-	}
-	if !bres.ValidateNonce(breq.nonce) {
-		return fmt.Errorf("Nonce mismatch")
-	}
-
-	resMsg, err := identity.Decrypt(bres.nonce, bres.Message)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("resMsg: %v\n", string(resMsg))
-
-	if v, ok := res.(Action); ok {
-		fmt.Printf("Action Action: %s\n", v.ActionName)
-	}
-	err = json.Unmarshal(resMsg, &res)
-
-	return err
+	return bres.Decrypt(identity, res)
 }
 
 func (c *Connection) Connect() error {
@@ -348,14 +264,6 @@ func (c *Connection) ChangePublicKeys(identity *Identity) (err error) {
 		return err
 	}
 	fmt.Printf("bres: %v\n", res)
-
-	//cnonce, err := breq.GetNonce()
-	//if err != nil {
-	//return err
-	//}
-	//if !bres.ValidateNonce(cnonce) {
-	//return fmt.Errorf(("Nonce mismatch"))
-	//}
 	fmt.Printf("res: %v\n", res)
 
 	identity.SetServerPubKey(res.PubKey)
@@ -365,21 +273,15 @@ func (c *Connection) ChangePublicKeys(identity *Identity) (err error) {
 
 func (c *Connection) Associate(identity *Identity) (err error) {
 	req := MsgReqAssociate{
-		BaseRequest: BaseRequest{
-			Action: Action{"associate"},
-		},
-		Key:   identity.GetPubKey(),
-		IdKey: identity.GetIdKey(),
+		Action: Action{"associate"},
+		Key:    identity.GetPubKey(),
+		IdKey:  identity.GetIdKey(),
 	}
 
 	res := MsgResAssociate{}
-	if err := c.sendEncRequest(identity, "", &req, &res); err != nil {
+	if err := c.sendEncReq(identity, "associate", &req, &res); err != nil {
 		return err
 	}
-	if res.Success != "true" {
-		return fmt.Errorf("Error associate: %s (code: %s)", res.Error, res.ErrorCode)
-	}
-	fmt.Printf("res: %v\n", res)
 
 	identity.AId = res.Id
 
@@ -388,19 +290,14 @@ func (c *Connection) Associate(identity *Identity) (err error) {
 
 func (c *Connection) TestAssociate(identity *Identity) (err error) {
 	req := MsgReqTestAssociate{
-		BaseRequest: BaseRequest{
-			Action: Action{"test-associate"},
-		},
-		Id:  identity.AId,
-		Key: identity.GetIdKey(),
+		Action: Action{"test-associate"},
+		Id:     identity.AId,
+		Key:    identity.GetIdKey(),
 	}
 
-	res := MsgResAssociate{}
-	if err := c.sendEncRequest(identity, "", &req, &res); err != nil {
+	res := MsgResTestAssociate{}
+	if err := c.sendEncReq(identity, "test-associate", &req, &res); err != nil {
 		return err
-	}
-	if res.Success != "true" {
-		return fmt.Errorf("Error test-associate: %s (code: %s)", res.Error, res.ErrorCode)
 	}
 	fmt.Printf("res: %v\n", res)
 
@@ -409,20 +306,12 @@ func (c *Connection) TestAssociate(identity *Identity) (err error) {
 
 func (c *Connection) GeneratePassword(identity *Identity, timeout int) (err error) {
 	req := MsgReqGeneratePassword{
-		BaseRequest: BaseRequest{
-			Action:  Action{"generate-password"},
-			timeout: timeout,
-		},
-		RequestId: GenerateRequestID(),
+		Action: Action{"generate-password"},
 	}
 
 	res := MsgResGeneratePassword{}
-	if err := c.sendEncRequest(identity, req.RequestId, &req, &res); err != nil {
+	if err := c.sendEncReq(identity, "generate-password", &req, &res); err != nil {
 		return err
-	}
-
-	if res.Success != "true" {
-		return fmt.Errorf("Error GeneratePassword")
 	}
 	fmt.Printf("res: %v\n", res)
 
@@ -431,10 +320,8 @@ func (c *Connection) GeneratePassword(identity *Identity, timeout int) (err erro
 
 func (c *Connection) GetLogins(identity *Identity, url string) (err error) {
 	req := MsgReqGetLogins{
-		BaseRequest: BaseRequest{
-			Action: Action{"get-logins"},
-		},
-		Url: url,
+		Action: Action{"get-logins"},
+		Url:    url,
 		Keys: []key{
 			key{
 				Id:  identity.AId,
@@ -446,11 +333,8 @@ func (c *Connection) GetLogins(identity *Identity, url string) (err error) {
 	fmt.Printf("reqGetLogins key: %v\n", []byte(identity.GetIdKey()))
 
 	res := MsgResGetLogins{}
-	if err := c.sendEncRequest(identity, "", &req, &res); err != nil {
+	if err := c.sendEncReq(identity, "get-logins", &req, &res); err != nil {
 		return err
-	}
-	if res.Success != "true" {
-		return fmt.Errorf("Error associate: %s (code: %s)", res.Error, res.ErrorCode)
 	}
 	fmt.Printf("res: %v\n", res)
 
