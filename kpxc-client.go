@@ -1,6 +1,7 @@
 package keepassxc_browser
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -48,6 +49,20 @@ func (c *Client) sendReq(req ReqI, res ResI, timeout int) (err error) {
 
 	if v.GetError() != "" && !v.IsSuccess() {
 		return fmt.Errorf("Error: %s (code: %d)", v.GetError(), v.GetErrorCode())
+	}
+
+	if rnonce, err := v.GetNonce(); err != nil {
+		return err
+	} else {
+		cnonce, err := req.GetNonce()
+		if err != nil {
+			return err
+		}
+		cnonce.Next()
+
+		if bytes.Compare(cnonce.Bytes, rnonce.Bytes) != 0 {
+			return fmt.Errorf("Nonce mismatch")
+		}
 	}
 
 	return err
