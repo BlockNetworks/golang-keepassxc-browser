@@ -36,7 +36,6 @@ func (conn *PosixConnection) Recv(bufsize int, timeout int) (ret []byte, err err
 	if conn.c == nil {
 		return nil, fmt.Errorf("No connection established")
 	}
-	fmt.Printf("timeout: %d\n", timeout)
 
 	ret = make([]byte, bufsize)
 	if timeout > 0 {
