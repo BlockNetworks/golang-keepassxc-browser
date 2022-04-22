@@ -96,6 +96,12 @@ type MsgReqSetLogin struct {
 	DownloadFavicon bool   `json:"downloadFavicon"`
 }
 
+type MsgResSetLogin struct {
+	MsgBase
+	Entries []LoginEntry `json:"entries"`
+	Count   int          `json:"count"`
+}
+
 type MsgReqLockDatabase struct {
 	Action
 }
@@ -139,9 +145,14 @@ type MsgResCreateNewGroup struct {
 	GroupEntry
 }
 
-type MsgGetTotp struct {
+type MsgReqGetTotp struct {
 	Action
 	Uuid string `json:"uuid"`
+}
+
+type MsgResGetTotp struct {
+	MsgBase
+	Totp string `json:"totp"`
 }
 
 type MsgRequestAutotype struct {

@@ -3,6 +3,7 @@ package keepassxc_browser
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/jamesruan/sodium"
@@ -160,7 +161,7 @@ func (r *encRes) Decrypt(identity *Identity, res interface{}) (err error) {
 	if err != nil {
 		return err
 	}
-	//fmt.Printf("Decrypted json: %s\n", jres)
+	fmt.Printf("Decrypted json: %s\n", jres)
 
 	return json.Unmarshal(jres, &res)
 }

@@ -197,6 +197,27 @@ func (c *Client) GetLogins(identity *Identity, url, submitUrl, httpAuth string) 
 	return err
 }
 
+func (c *Client) SetLogin(identity *Identity, url, submitUrl, login, password, group, groupUuid, uuid string) (err error) {
+	req := MsgReqSetLogin{
+		Action:    Action{"set-login"},
+		Url:       url,
+		SubmitUrl: submitUrl,
+		Login:     login,
+		Password:  password,
+		Group:     group,
+		GroupUuid: groupUuid,
+		Uuid:      uuid,
+	}
+
+	res := MsgResSetLogin{}
+	if err := c.sendEncReq(identity, "set-login", &req, &res); err != nil {
+		return err
+	}
+	fmt.Printf("res: %v\n", res)
+
+	return err
+}
+
 func (c *Client) LockDatabase(identity *Identity) (err error) {
 	req := MsgReqLockDatabase{
 		Action: Action{"lock-database"},
@@ -242,6 +263,22 @@ func (c *Client) CreateNewGroup(identity *Identity, groupName string) (err error
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
+
+	return err
+}
+
+func (c *Client) GetTotp(identity *Identity, uuid string) (err error) {
+	req := MsgReqGetTotp{
+		Action: Action{"get-totp"},
+		Uuid:   uuid,
+	}
+
+	res := MsgResGetTotp{}
+	if err := c.sendEncReq(identity, "get-totp", &req, &res); err != nil {
+		return err
+	}
+	fmt.Printf("res: %v\n", res)
+	fmt.Printf("res totp: %v\n", res.Totp)
 
 	return err
 }
