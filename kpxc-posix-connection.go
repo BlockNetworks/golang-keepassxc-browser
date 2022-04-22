@@ -47,16 +47,5 @@ func (conn *PosixConnection) Recv(bufsize int, timeout int) (ret []byte, err err
 		return nil, err
 	}
 
-	// stupid protocol....
-	if n == 2 {
-		if timeout > 0 {
-			conn.c.SetReadDeadline(time.Now().Add(time.Duration(time.Second * time.Duration(timeout))))
-		}
-		n, err = conn.c.Read(ret)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return ret[:n], err
 }

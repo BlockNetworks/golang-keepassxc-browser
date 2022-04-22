@@ -31,6 +31,14 @@ func (c *Client) sendReq(req ReqI, res ResI) (err error) {
 	}
 	fmt.Printf("jres: %v\n", string(jres))
 
+	// stupid protocol....
+	if len(jres) == 2 {
+		jres, err = c.conn.Recv(BufSize, req.GetTimeout())
+		if err != nil {
+			return err
+		}
+	}
+
 	resData := res.GetRes()
 	if err = json.Unmarshal(jres, resData); err != nil {
 		return err
