@@ -51,18 +51,18 @@ func (c *Client) sendReq(req ReqI, res ResI, timeout int) (err error) {
 		return fmt.Errorf("Error: %s (code: %d)", v.GetError(), v.GetErrorCode())
 	}
 
-	if rnonce, err := v.GetNonce(); err != nil {
+	rnonce, err := v.GetNonce()
+	if err != nil {
 		return err
-	} else {
-		cnonce, err := req.GetNonce()
-		if err != nil {
-			return err
-		}
-		cnonce.Next()
+	}
+	cnonce, err := req.GetNonce()
+	if err != nil {
+		return err
+	}
+	cnonce.Next()
 
-		if bytes.Compare(cnonce.Bytes, rnonce.Bytes) != 0 {
-			return fmt.Errorf("Nonce mismatch")
-		}
+	if bytes.Compare(cnonce.Bytes, rnonce.Bytes) != 0 {
+		return fmt.Errorf("Nonce mismatch")
 	}
 
 	return err
