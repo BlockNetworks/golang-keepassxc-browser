@@ -13,7 +13,7 @@ type Client struct {
 	conn          ConnectionI
 }
 
-func (c *Client) sendReq(req ReqI, res ResI) (err error) {
+func (c *Client) sendReq(req ReqI, res ResI, timeout int) (err error) {
 	fmt.Printf("req: %v\n", req)
 	jreq, err := json.Marshal(req.GetReq())
 	if err != nil {
@@ -25,7 +25,7 @@ func (c *Client) sendReq(req ReqI, res ResI) (err error) {
 		return err
 	}
 
-	jres, err := c.conn.Recv(BufSize, req.GetTimeout())
+	jres, err := c.conn.Recv(BufSize, timeout)
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func (c *Client) sendReq(req ReqI, res ResI) (err error) {
 
 	// stupid protocol....
 	if len(jres) == 2 {
-		jres, err = c.conn.Recv(BufSize, req.GetTimeout())
+		jres, err = c.conn.Recv(BufSize, timeout)
 		if err != nil {
 			return err
 		}
@@ -59,10 +59,13 @@ func (c *Client) sendReq(req ReqI, res ResI) (err error) {
 	return err
 }
 
-func (c *Client) sendEncReq(identity *Identity, reqName string, req interface{}, res interface{}) (err error) {
+func (c *Client) SendReq(req ReqI, res ResI) (err error) {
+	return c.sendReq(req, res, 0)
+}
+
+func (c *Client) sendEncReq(identity *Identity, reqName string, req interface{}, res interface{}, timeout int) (err error) {
 	breq := encReq{}
 	identity.SignReq(reqName, &breq)
-	breq.SetTimeout(30)
 
 	if err = breq.Encrypt(identity, req); err != nil {
 		return err
@@ -71,7 +74,7 @@ func (c *Client) sendEncReq(identity *Identity, reqName string, req interface{},
 
 	bres := encRes{}
 	bres.SetRes(&bres)
-	if err = c.sendReq(&breq, &bres); err != nil {
+	if err = c.sendReq(&breq, &bres, timeout); err != nil {
 		return err
 	}
 	fmt.Printf("bres: %v\n", bres)
@@ -81,6 +84,10 @@ func (c *Client) sendEncReq(identity *Identity, reqName string, req interface{},
 		return nil
 	}
 	return bres.Decrypt(identity, res)
+}
+
+func (c *Client) SendEncReq(identity *Identity, reqName string, req interface{}, res interface{}) (err error) {
+	return c.sendEncReq(identity, reqName, req, res, 0)
 }
 
 func (c *Client) Connect() error {
@@ -107,7 +114,7 @@ func (c *Client) ChangePublicKeys(identity *Identity) (err error) {
 	bres := res{}
 	res := &PubKeyRes{}
 	bres.SetRes(res)
-	if err = c.sendReq(&breq, &bres); err != nil {
+	if err = c.SendReq(&breq, &bres); err != nil {
 		return err
 	}
 	fmt.Printf("bres: %v\n", res)
@@ -124,7 +131,7 @@ func (c *Client) GetDatabasehash(identity *Identity) (err error) {
 	}
 
 	res := MsgResGetDatabasehash{}
-	if err := c.sendEncReq(identity, "get-databasehash", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "get-databasehash", &req, &res); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
@@ -141,7 +148,7 @@ func (c *Client) Associate(identity *Identity) (err error) {
 	}
 
 	res := MsgResAssociate{}
-	if err := c.sendEncReq(identity, "associate", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "associate", &req, &res); err != nil {
 		return err
 	}
 
@@ -158,7 +165,7 @@ func (c *Client) TestAssociate(identity *Identity) (err error) {
 	}
 
 	res := MsgResTestAssociate{}
-	if err := c.sendEncReq(identity, "test-associate", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "test-associate", &req, &res); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
@@ -172,7 +179,7 @@ func (c *Client) GeneratePassword(identity *Identity, timeout int) (err error) {
 	}
 
 	res := MsgResGeneratePassword{}
-	if err := c.sendEncReq(identity, "generate-password", &req, &res); err != nil {
+	if err := c.sendEncReq(identity, "generate-password", &req, &res, timeout); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
@@ -197,7 +204,7 @@ func (c *Client) GetLogins(identity *Identity, url, submitUrl, httpAuth string) 
 	fmt.Printf("reqGetLogins key: %v\n", []byte(identity.GetIdKey()))
 
 	res := MsgResGetLogins{}
-	if err := c.sendEncReq(identity, "get-logins", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "get-logins", &req, &res); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
@@ -218,7 +225,7 @@ func (c *Client) SetLogin(identity *Identity, url, submitUrl, login, password, g
 	}
 
 	res := MsgResSetLogin{}
-	if err := c.sendEncReq(identity, "set-login", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "set-login", &req, &res); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
@@ -232,7 +239,7 @@ func (c *Client) LockDatabase(identity *Identity) (err error) {
 	}
 
 	res := MsgResLockDatabase{}
-	if err := c.sendEncReq(identity, "lock-database", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "lock-database", &req, &res); err != nil {
 		fmt.Printf("res: %v\n", res)
 		return err
 	}
@@ -246,7 +253,7 @@ func (c *Client) GetDatabaseGroups(identity *Identity) (err error) {
 	}
 
 	res := MsgResGetDatabaseGroups{}
-	if err := c.sendEncReq(identity, "get-database-groups", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "get-database-groups", &req, &res); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
@@ -267,7 +274,7 @@ func (c *Client) CreateNewGroup(identity *Identity, groupName string) (err error
 	}
 
 	res := MsgResCreateNewGroup{}
-	if err := c.sendEncReq(identity, "create-new-group", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "create-new-group", &req, &res); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
@@ -282,7 +289,7 @@ func (c *Client) GetTotp(identity *Identity, uuid string) (err error) {
 	}
 
 	res := MsgResGetTotp{}
-	if err := c.sendEncReq(identity, "get-totp", &req, &res); err != nil {
+	if err := c.SendEncReq(identity, "get-totp", &req, &res); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)

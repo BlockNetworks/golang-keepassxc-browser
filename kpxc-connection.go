@@ -22,8 +22,6 @@ type ConnectionI interface {
 type ReqI interface {
 	GetAction() string
 	SetAction(string)
-	GetTimeout() int
-	SetTimeout(int)
 	GetClientId() string
 	SetClientId(string)
 	GetRequestId() string
@@ -39,15 +37,12 @@ type req struct {
 	Nonce      string `json:"nonce"`
 	ClientId   string `json:"clientID"`
 	RequestId  string `json:"requestID,omitempty"`
-	timeout    int
 	nonce      sodium.BoxNonce
 	data       interface{}
 }
 
 func (r *req) GetAction() string           { return r.ActionName }
 func (r *req) SetAction(action string)     { r.ActionName = action }
-func (r *req) GetTimeout() int             { return r.timeout }
-func (r *req) SetTimeout(timeout int)      { r.timeout = timeout }
 func (r *req) GetClientId() string         { return r.ClientId }
 func (r *req) SetClientId(clientId string) { r.ClientId = clientId }
 func (r *req) GetRequestId() string        { return r.RequestId }
