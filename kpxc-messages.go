@@ -17,8 +17,12 @@ type MsgPublicKey struct {
 	PubKey string `json:"publicKey"`
 }
 
-type MsgGetDatabasehash struct {
+type MsgReqGetDatabasehash struct {
 	Action
+}
+
+type MsgResGetDatabasehash struct {
+	MsgBase
 }
 
 type MsgReqAssociate struct {
@@ -78,7 +82,7 @@ type MsgResGetLogins struct {
 	Count   int          `json:"count"`
 }
 
-type MsgSetLogin struct {
+type MsgReqSetLogin struct {
 	Action
 	Url             string `json:"url"`
 	SubmitUrl       string `json:"submitUrl"`
@@ -92,17 +96,47 @@ type MsgSetLogin struct {
 	DownloadFavicon bool   `json:"downloadFavicon"`
 }
 
-type MsgLockDatabase struct {
+type MsgReqLockDatabase struct {
 	Action
 }
 
-type MsgGetDatabaseGroups struct {
+type MsgResLockDatabase struct {
 	Action
 }
 
-type MsgCreateNewGroup struct {
+type MsgReqGetDatabaseGroups struct {
+	Action
+}
+
+type GroupEntry struct {
+	Name string `json:"name"`
+	Uuid string `json:"uuid"`
+}
+
+type GroupChild struct {
+	GroupEntry
+	Children []GroupChild `json:"children"`
+}
+
+type GroupsEntry struct {
+	Groups []GroupChild `json:"groups"`
+}
+
+type MsgResGetDatabaseGroups struct {
+	MsgBase
+	DefaultGroup            string      `json:"defaultGroup"`
+	DefaultGroupAlwaysAllow bool        `json:"defaultGroupAlwaysAllow"`
+	Groups                  GroupsEntry `json:"groups"`
+}
+
+type MsgReqCreateNewGroup struct {
 	Action
 	GroupName string `json:"groupName"`
+}
+
+type MsgResCreateNewGroup struct {
+	MsgBase
+	GroupEntry
 }
 
 type MsgGetTotp struct {

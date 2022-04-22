@@ -164,6 +164,7 @@ func (r *encRes) Decrypt(identity *Identity, res interface{}) (err error) {
 	if err != nil {
 		return err
 	}
+	//fmt.Printf("Decrypted json: %s\n", jres)
 
 	return json.Unmarshal(jres, &res)
 }
@@ -233,6 +234,10 @@ func (c *Connection) sendEncReq(identity *Identity, reqName string, req interfac
 	}
 	fmt.Printf("bres: %v\n", bres)
 
+	// lock database call -> no encryption
+	if reqName == "lock-database" {
+		return nil
+	}
 	return bres.Decrypt(identity, res)
 }
 
@@ -267,6 +272,21 @@ func (c *Connection) ChangePublicKeys(identity *Identity) (err error) {
 	fmt.Printf("res: %v\n", res)
 
 	identity.SetServerPubKey(res.PubKey)
+
+	return err
+}
+
+func (c *Connection) GetDatabasehash(identity *Identity) (err error) {
+	req := MsgReqGetDatabasehash{
+		Action: Action{"get-databasehash"},
+	}
+
+	res := MsgResGetDatabasehash{}
+	if err := c.sendEncReq(identity, "get-databasehash", &req, &res); err != nil {
+		return err
+	}
+	fmt.Printf("res: %v\n", res)
+	fmt.Printf("res: %v\n", res.ActionName)
 
 	return err
 }
@@ -318,10 +338,12 @@ func (c *Connection) GeneratePassword(identity *Identity, timeout int) (err erro
 	return err
 }
 
-func (c *Connection) GetLogins(identity *Identity, url string) (err error) {
+func (c *Connection) GetLogins(identity *Identity, url, submitUrl, httpAuth string) (err error) {
 	req := MsgReqGetLogins{
-		Action: Action{"get-logins"},
-		Url:    url,
+		Action:    Action{"get-logins"},
+		Url:       url,
+		SubmitUrl: submitUrl,
+		HttpAuth:  httpAuth,
 		Keys: []key{
 			key{
 				Id:  identity.AId,
@@ -334,6 +356,55 @@ func (c *Connection) GetLogins(identity *Identity, url string) (err error) {
 
 	res := MsgResGetLogins{}
 	if err := c.sendEncReq(identity, "get-logins", &req, &res); err != nil {
+		return err
+	}
+	fmt.Printf("res: %v\n", res)
+
+	return err
+}
+
+func (c *Connection) LockDatabase(identity *Identity) (err error) {
+	req := MsgReqLockDatabase{
+		Action: Action{"lock-database"},
+	}
+
+	res := MsgResLockDatabase{}
+	if err := c.sendEncReq(identity, "lock-database", &req, &res); err != nil {
+		fmt.Printf("res: %v\n", res)
+		return err
+	}
+
+	return err
+}
+
+func (c *Connection) GetDatabaseGroups(identity *Identity) (err error) {
+	req := MsgReqGetDatabaseGroups{
+		Action: Action{"get-database-groups"},
+	}
+
+	res := MsgResGetDatabaseGroups{}
+	if err := c.sendEncReq(identity, "get-database-groups", &req, &res); err != nil {
+		return err
+	}
+	fmt.Printf("res: %v\n", res)
+	for _, g := range res.Groups.Groups {
+		fmt.Printf("Group: %v\n", g)
+		for _, c := range g.Children {
+			fmt.Printf("Children: %v\n", c)
+		}
+	}
+
+	return err
+}
+
+func (c *Connection) CreateNewGroup(identity *Identity, groupName string) (err error) {
+	req := MsgReqCreateNewGroup{
+		Action:    Action{"create-new-group"},
+		GroupName: groupName,
+	}
+
+	res := MsgResCreateNewGroup{}
+	if err := c.sendEncReq(identity, "create-new-group", &req, &res); err != nil {
 		return err
 	}
 	fmt.Printf("res: %v\n", res)
