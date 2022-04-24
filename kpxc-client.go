@@ -2,100 +2,135 @@ package keepassxc_browser
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 	"runtime"
+	"strconv"
+
+	"github.com/jamesruan/sodium"
 )
 
 type Client struct {
+	ClientId      string
+	IdKey         string
+	AId           string
+	keyPair       sodium.BoxKP
+	serverPubKey  sodium.BoxPublicKey
 	serverAddress string
 	conn          ConnectionI
 }
 
-func (c *Client) sendReq(req ReqI, res ResI, timeout int) (err error) {
-	jreq, err := json.Marshal(req.GetReq())
-	if err != nil {
-		return err
+func (c *Client) sendMsg(req *ConnMsg, timeout int) (ret *ConnMsg, err error) {
+	if err = c.prepareMsg(req); err != nil {
+		return nil, err
 	}
 
+	jreq, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+
+	//slog.LOG_DEBUGF("SendReq jreq: %v\n", jreq)
+	//slog.LOG_DEBUGF("SendReq jreq: %s\n", jreq)
 	if err = c.conn.Send(jreq); err != nil {
-		return err
+		return nil, err
 	}
 
 	jres, err := c.conn.Recv(BufSize, timeout)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	//slog.LOG_DEBUGF("SendReq jres: %v\n", jres)
+	//slog.LOG_DEBUGF("SendReq jres: %s\n", jres)
 
 	// stupid protocol....
 	if len(jres) == 2 {
 		jres, err = c.conn.Recv(BufSize, timeout)
 		if err != nil {
+			return nil, err
+		}
+	}
+
+	if ret, err = ParseConnMsg(jres); err != nil {
+		return nil, err
+	}
+
+	// even MORE stupid protocol.... ?????
+	if ret.ActionName == "database-locked" {
+		jres, err = c.conn.Recv(BufSize, timeout)
+		if err != nil {
+			return nil, err
+		}
+		if ret, err = ParseConnMsg(jres); err != nil {
+			return nil, err
+		}
+	}
+
+	if err = c.postMsg(req, ret); err != nil {
+		return ret, err
+	}
+
+	return ret, nil
+}
+
+func (c *Client) SendMsg(req *ConnMsg) (ret *ConnMsg, err error) {
+	return c.sendMsg(req, 0)
+}
+
+func (c *Client) prepareMsg(req *ConnMsg) (err error) {
+	if req.data == nil {
+		return nil
+	}
+
+	jdata, err := json.Marshal(req.data)
+	if err != nil {
+		return err
+	}
+	jedata := EncryptBytes(req.nonce, c.serverPubKey, c.keyPair.SecretKey, jdata)
+	req.Message = base64.StdEncoding.EncodeToString(jedata)
+
+	return nil
+}
+
+func (c *Client) postMsg(req, res *ConnMsg) (err error) {
+	if res.Error != "" || res.ErrorCode != "" {
+		ec, err := strconv.Atoi(res.ErrorCode)
+		if err != nil {
+			ec = -1
+		}
+		return fmt.Errorf("Error: %s (Code: %d)", res.Error, ec)
+	}
+	if res.Success != "" && res.Success != "true" {
+		return fmt.Errorf("Unknown Error")
+	}
+
+	cnonce := sodium.BoxNonce{}
+	cnonce.Bytes = sodium.Bytes(req.nonce.Bytes)
+	cnonce.Next()
+
+	if res.Nonce != "" && bytes.Compare(cnonce.Bytes, res.nonce.Bytes) != 0 {
+		return fmt.Errorf("Nonce mismatch")
+	}
+
+	if res.Message != "" && res.Nonce != "" && res.data != nil {
+		jedata, err := base64.StdEncoding.DecodeString(res.Message)
+		if err != nil {
+			return err
+		}
+		jdata, err := DecryptBytes(res.nonce, c.serverPubKey, c.keyPair.SecretKey, jedata)
+		if err != nil {
+			return err
+		}
+		if err = json.Unmarshal(jdata, res.data); err != nil {
 			return err
 		}
 	}
 
-	resData := res.GetRes()
-	if err = json.Unmarshal(jres, resData); err != nil {
-		return err
-	}
-
-	v, ok := resData.(ResI)
-	if !ok {
-		return err
-	}
-
-	if v.GetError() != "" && !v.IsSuccess() {
-		return fmt.Errorf("Error: %s (code: %d)", v.GetError(), v.GetErrorCode())
-	}
-
-	rnonce, err := v.GetNonce()
-	if err != nil {
-		return err
-	}
-	cnonce, err := req.GetNonce()
-	if err != nil {
-		return err
-	}
-	cnonce.Next()
-
-	if bytes.Compare(cnonce.Bytes, rnonce.Bytes) != 0 {
-		return fmt.Errorf("Nonce mismatch")
-	}
-
-	return err
-}
-
-func (c *Client) SendReq(req ReqI, res ResI) (err error) {
-	return c.sendReq(req, res, 0)
-}
-
-func (c *Client) sendEncReq(identity *Identity, reqName string, req interface{}, res interface{}, timeout int) (err error) {
-	breq := encReq{}
-	identity.SignReq(reqName, &breq)
-
-	if err = breq.Encrypt(identity, req); err != nil {
-		return err
-	}
-	breq.SetReq(&breq)
-
-	bres := encRes{}
-	bres.SetRes(&bres)
-	if err = c.sendReq(&breq, &bres, timeout); err != nil {
-		return err
-	}
-
-	// lock database call -> no encryption
-	if reqName == "lock-database" {
-		return nil
-	}
-	return bres.Decrypt(identity, res)
-}
-
-func (c *Client) SendEncReq(identity *Identity, reqName string, req interface{}, res interface{}) (err error) {
-	return c.sendEncReq(identity, reqName, req, res, 0)
+	return nil
 }
 
 func (c *Client) Connect() error {
@@ -106,186 +141,262 @@ func (c *Client) Close() {
 	c.conn.Close()
 }
 
-func (c *Client) ChangePublicKeys(identity *Identity) (ret *PubKeyRes, err error) {
-	breq := req{}
-	identity.SignReq("change-public-keys", &breq)
+func (c *Client) ChangePublicKeys() (ret *ConnMsg, err error) {
+	req, err := GenerateConnReq("change-public-keys", c.ClientId)
+	if err != nil {
+		return nil, err
+	}
+	req.PublicKey = base64.StdEncoding.EncodeToString(c.keyPair.PublicKey.Bytes)
 
-	breq.SetReq(struct {
-		req
-		MsgPublicKey
-	}{
-		breq,
-		MsgPublicKey{identity.GetPubKey()},
-	})
-
-	bres := res{}
-	res := &PubKeyRes{}
-	bres.SetRes(res)
-	if err = c.SendReq(&breq, &bres); err != nil {
-		return ret, err
+	if ret, err = c.SendMsg(req); err != nil {
+		return nil, err
 	}
 
-	identity.SetServerPubKey(res.PubKey)
+	if c.serverPubKey.Bytes, err = base64.StdEncoding.DecodeString(ret.PublicKey); err != nil {
+		return nil, err
+	}
 
-	return res, err
+	return ret, err
 }
 
-func (c *Client) GetDatabasehash(identity *Identity) (ret *MsgResGetDatabasehash, err error) {
-	req := MsgReqGetDatabasehash{
-		Action: Action{"get-databasehash"},
+func (c *Client) GetDatabasehash() (ret *MsgGetDatabasehash, err error) {
+	req, err := GenerateConnReq("get-databasehash", c.ClientId)
+	if err != nil {
+		return nil, err
 	}
 
-	res := MsgResGetDatabasehash{}
-	if err := c.SendEncReq(identity, "get-databasehash", &req, &res); err != nil {
-		return ret, err
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return nil, err
+	}
+	ret = res.data.(*MsgGetDatabasehash)
+
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
 	}
 
-	return &res, err
+	return ret, nil
 }
 
-func (c *Client) Associate(identity *Identity) (ret *MsgResAssociate, err error) {
-	req := MsgReqAssociate{
-		Action: Action{"associate"},
-		Key:    identity.GetPubKey(),
-		IdKey:  identity.GetIdKey(),
+func (c *Client) Associate() (ret *MsgAssociate, err error) {
+	req, err := GenerateConnReq("associate", c.ClientId)
+	if err != nil {
+		return nil, err
 	}
+	req.data.(*MsgAssociate).Key = base64.StdEncoding.EncodeToString(c.keyPair.PublicKey.Bytes)
+	req.data.(*MsgAssociate).IdKey = c.IdKey
 
-	res := MsgResAssociate{}
-	if err := c.SendEncReq(identity, "associate", &req, &res); err != nil {
-		return ret, err
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return nil, err
 	}
+	ret = res.data.(*MsgAssociate)
 
-	identity.AId = res.Id
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
+	}
+	c.AId = ret.Id
 
-	return &res, err
+	return ret, nil
 }
 
-func (c *Client) TestAssociate(identity *Identity) (ret *MsgResTestAssociate, err error) {
-	req := MsgReqTestAssociate{
-		Action: Action{"test-associate"},
-		Id:     identity.AId,
-		Key:    identity.GetIdKey(),
+func (c *Client) TestAssociate() (ret *MsgAssociate, err error) {
+	req, err := GenerateConnReq("test-associate", c.ClientId)
+	if err != nil {
+		return nil, err
+	}
+	req.data.(*MsgAssociate).Key = c.IdKey
+	req.data.(*MsgAssociate).Id = c.AId
+
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return nil, err
+	}
+	ret = res.data.(*MsgAssociate)
+
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
 	}
 
-	res := MsgResTestAssociate{}
-	if err := c.SendEncReq(identity, "test-associate", &req, &res); err != nil {
-		return ret, err
-	}
-
-	return &res, err
+	return ret, nil
 }
 
-func (c *Client) GeneratePassword(identity *Identity, timeout int) (ret *MsgResGeneratePassword, err error) {
-	req := MsgReqGeneratePassword{
-		Action: Action{"generate-password"},
+func (c *Client) GeneratePassword(timeout int) (ret *MsgGeneratePassword, err error) {
+	req, err := GenerateConnReq("generate-password", c.ClientId)
+	if err != nil {
+		return nil, err
 	}
 
-	res := MsgResGeneratePassword{}
-	if err := c.sendEncReq(identity, "generate-password", &req, &res, timeout); err != nil {
-		return ret, err
+	res, err := c.sendMsg(req, timeout)
+	if err != nil {
+		return nil, err
+	}
+	ret = res.data.(*MsgGeneratePassword)
+
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
 	}
 
-	return &res, err
+	return ret, nil
 }
 
-func (c *Client) GetLogins(identity *Identity, url, submitUrl, httpAuth string) (ret *MsgResGetLogins, err error) {
-	req := MsgReqGetLogins{
-		Action:    Action{"get-logins"},
-		Url:       url,
-		SubmitUrl: submitUrl,
-		HttpAuth:  httpAuth,
-		Keys: []key{
-			key{
-				Id:  identity.AId,
-				Key: identity.GetIdKey(),
-			},
+func (c *Client) GetLogins(url, submitUrl, httpAuth string) (ret *MsgGetLogins, err error) {
+	req, err := GenerateConnReq("get-logins", c.ClientId)
+	if err != nil {
+		return nil, err
+	}
+	reqi := req.data.(*MsgGetLogins)
+	reqi.Url = url
+	reqi.SubmitUrl = submitUrl
+	reqi.HttpAuth = httpAuth
+	reqi.Keys = []key{
+		{
+			Id:  c.AId,
+			Key: c.IdKey,
 		},
 	}
 
-	res := MsgResGetLogins{}
-	if err := c.SendEncReq(identity, "get-logins", &req, &res); err != nil {
-		return ret, err
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return nil, err
+	}
+	ret = res.data.(*MsgGetLogins)
+
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
 	}
 
-	return &res, err
+	return ret, nil
 }
 
-func (c *Client) SetLogin(identity *Identity, url, submitUrl, login, password, group, groupUuid, uuid string) (ret *MsgResSetLogin, err error) {
-	req := MsgReqSetLogin{
-		Action:    Action{"set-login"},
-		Url:       url,
-		SubmitUrl: submitUrl,
-		Login:     login,
-		Password:  password,
-		Group:     group,
-		GroupUuid: groupUuid,
-		Uuid:      uuid,
+func (c *Client) SetLogin(url, submitUrl, login, password, group, groupUuid, uuid string) (ret *MsgSetLogin, err error) {
+	req, err := GenerateConnReq("set-login", c.ClientId)
+	if err != nil {
+		return nil, err
+	}
+	reqi := req.data.(*MsgSetLogin)
+	reqi.Url = url
+	reqi.SubmitUrl = submitUrl
+	reqi.Login = login
+	reqi.Password = password
+	reqi.Group = group
+	reqi.GroupUuid = groupUuid
+	reqi.Uuid = uuid
+
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return nil, err
+	}
+	ret = res.data.(*MsgSetLogin)
+
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
 	}
 
-	res := MsgResSetLogin{}
-	if err := c.SendEncReq(identity, "set-login", &req, &res); err != nil {
-		return ret, err
-	}
-
-	return &res, err
+	return ret, nil
 }
 
-func (c *Client) LockDatabase(identity *Identity) (err error) {
-	req := MsgReqLockDatabase{
-		Action: Action{"lock-database"},
+func (c *Client) LockDatabase() (err error) {
+	req, err := GenerateConnReq("lock-database", c.ClientId)
+	if err != nil {
+		return err
 	}
 
-	res := MsgResLockDatabase{}
-	if err := c.SendEncReq(identity, "lock-database", &req, &res); err != nil {
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return err
+	}
+	if res.data.(*MsgLockDatabase).Success != "true" {
+		return fmt.Errorf("Unknown Error")
+	}
+	return nil
+}
+
+func (c *Client) GetDatabaseGroups() (ret *MsgGetDatabaseGroups, err error) {
+	req, err := GenerateConnReq("get-database-groups", c.ClientId)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return nil, err
+	}
+	ret = res.data.(*MsgGetDatabaseGroups)
+
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
+	}
+
+	return ret, nil
+}
+
+func (c *Client) CreateNewGroup(groupName string) (ret *MsgCreateNewGroup, err error) {
+	req, err := GenerateConnReq("create-new-group", c.ClientId)
+	if err != nil {
+		return nil, err
+	}
+	req.data.(*MsgCreateNewGroup).GroupName = groupName
+
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return nil, err
+	}
+	ret = res.data.(*MsgCreateNewGroup)
+
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
+	}
+
+	return ret, nil
+}
+
+func (c *Client) GetTotp(uuid string) (ret *MsgGetTotp, err error) {
+	req, err := GenerateConnReq("get-totp", c.ClientId)
+	if err != nil {
+		return nil, err
+	}
+	req.data.(*MsgGetTotp).Uuid = uuid
+
+	res, err := c.SendMsg(req)
+	if err != nil {
+		return nil, err
+	}
+	ret = res.data.(*MsgGetTotp)
+
+	if ret.Success != "true" {
+		return ret, fmt.Errorf("Unknown Error")
+	}
+
+	return ret, nil
+}
+
+func (c *Client) SaveAssoc(file string) (err error) {
+	jassoc, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(file, jassoc, 0644)
+}
+
+func (c *Client) LoadAssoc(file string) (err error) {
+	jassoc, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(jassoc, c); err != nil {
 		return err
 	}
 
 	return err
 }
 
-func (c *Client) GetDatabaseGroups(identity *Identity) (ret *MsgResGetDatabaseGroups, err error) {
-	req := MsgReqGetDatabaseGroups{
-		Action: Action{"get-database-groups"},
-	}
+func NewClient(clientId string) (client *Client, err error) {
+	client = new(Client)
 
-	res := MsgResGetDatabaseGroups{}
-	if err := c.SendEncReq(identity, "get-database-groups", &req, &res); err != nil {
-		return ret, err
-	}
-
-	return &res, err
-}
-
-func (c *Client) CreateNewGroup(identity *Identity, groupName string) (ret *MsgResCreateNewGroup, err error) {
-	req := MsgReqCreateNewGroup{
-		Action:    Action{"create-new-group"},
-		GroupName: groupName,
-	}
-
-	res := MsgResCreateNewGroup{}
-	if err := c.SendEncReq(identity, "create-new-group", &req, &res); err != nil {
-		return ret, err
-	}
-
-	return &res, err
-}
-
-func (c *Client) GetTotp(identity *Identity, uuid string) (ret *MsgResGetTotp, err error) {
-	req := MsgReqGetTotp{
-		Action: Action{"get-totp"},
-		Uuid:   uuid,
-	}
-
-	res := MsgResGetTotp{}
-	if err := c.SendEncReq(identity, "get-totp", &req, &res); err != nil {
-		return ret, err
-	}
-
-	return &res, err
-}
-
-func NewClient() (conn *Client, err error) {
-	conn = new(Client)
+	client.ClientId = clientId
+	client.IdKey = base64.StdEncoding.EncodeToString(sodium.MakeBoxKP().PublicKey.Bytes)
+	client.keyPair = sodium.MakeBoxKP()
 
 	tmpDir := os.Getenv("TMPDIR")
 	if tmpDir != "" {
@@ -300,14 +411,14 @@ func NewClient() (conn *Client, err error) {
 	oss := runtime.GOOS
 	switch oss {
 	case "linux":
-		conn.conn = &PosixConnection{}
+		client.conn = &PosixConnection{}
 		if _, err = os.Stat(tmpDir); err == nil {
-			conn.serverAddress = tmpDir
-			return conn, err
+			client.serverAddress = tmpDir
+			return client, err
 		}
 		if _, err := os.Stat(xdgRuntimeDir); err == nil {
-			conn.serverAddress = xdgRuntimeDir
-			return conn, err
+			client.serverAddress = xdgRuntimeDir
+			return client, err
 		}
 		return nil, fmt.Errorf("Unable to locate keepassxc socket")
 	default:

@@ -45,6 +45,8 @@ func (conn *PosixConnection) Recv(bufsize int, timeout int) (ret []byte, err err
 	if err != nil {
 		return nil, err
 	}
+	//slog.LOG_DEBUGF("Recv n: %d ret: %v\n", n, ret[:n])
+	//slog.LOG_DEBUGF("Recv n: %d ret: %s\n", n, ret[:n])
 
 	return ret[:n], err
 }
