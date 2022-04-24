@@ -2,32 +2,36 @@ package keepassxc_browser
 
 import "fmt"
 
-type MsgGetDatabasehash struct {
+type MsgI interface {
+	IsSuccess() bool
+}
+
+type MsgBase struct {
 	ActionName string `json:"action"`
 	Hash       string `json:"hash"`
 	Version    string `json:"version"`
 	Success    string `json:"success"`
 	Id         string `json:"id"`
 	Nonce      string `json:"nonce"`
+}
+
+func (m *MsgBase) IsSuccess() bool {
+	return m.Success == "true"
+}
+
+type MsgGetDatabasehash struct {
+	MsgBase
 }
 
 type MsgAssociate struct {
-	ActionName string `json:"action"`
-	Key        string `json:"key"`
-	IdKey      string `json:"idKey"`
-	Version    string `json:"version"`
-	Success    string `json:"success"`
-	Id         string `json:"id"`
-	Nonce      string `json:"nonce"`
+	MsgBase
+	Key   string `json:"key"`
+	IdKey string `json:"idKey"`
 }
 
 type MsgGeneratePassword struct {
-	ActionName string `json:"action"`
-	Hash       string `json:"hash"`
-	Version    string `json:"version"`
-	Success    string `json:"success"`
-	Id         string `json:"id"`
-	Password   string `json:"password"`
+	MsgBase
+	Password string `json:"password"`
 }
 
 type key struct {
@@ -45,25 +49,17 @@ type LoginEntry struct {
 }
 
 type MsgGetLogins struct {
-	ActionName string       `json:"action"`
-	Hash       string       `json:"hash"`
-	Version    string       `json:"version"`
-	Success    string       `json:"success"`
-	Id         string       `json:"id"`
-	Url        string       `json:"url"`
-	SubmitUrl  string       `json:"submitUrl,omitempty"`
-	HttpAuth   string       `json:"httpAuth,omitempty"`
-	Keys       []key        `json:"keys"`
-	Entries    []LoginEntry `json:"entries"`
-	Count      int          `json:"count"`
+	MsgBase
+	Url       string       `json:"url"`
+	SubmitUrl string       `json:"submitUrl,omitempty"`
+	HttpAuth  string       `json:"httpAuth,omitempty"`
+	Keys      []key        `json:"keys"`
+	Entries   []LoginEntry `json:"entries"`
+	Count     int          `json:"count"`
 }
 
 type MsgSetLogin struct {
-	ActionName      string       `json:"action"`
-	Hash            string       `json:"hash"`
-	Version         string       `json:"version"`
-	Success         string       `json:"success"`
-	Id              string       `json:"id"`
+	MsgBase
 	Url             string       `json:"url"`
 	SubmitUrl       string       `json:"submitUrl"`
 	Login           string       `json:"login"`
@@ -77,12 +73,7 @@ type MsgSetLogin struct {
 }
 
 type MsgLockDatabase struct {
-	ActionName string `json:"action"`
-	Hash       string `json:"hash"`
-	Version    string `json:"version"`
-	Id         string `json:"id"`
-	Nonce      string `json:"nonce"`
-	Success    string `json:"success"`
+	MsgBase
 }
 
 type GroupEntry struct {
@@ -100,58 +91,45 @@ type GroupsEntry struct {
 }
 
 type MsgGetDatabaseGroups struct {
-	ActionName              string      `json:"action"`
-	Id                      string      `json:"id"`
-	Nonce                   string      `json:"nonce"`
-	Success                 string      `json:"success"`
+	MsgBase
 	DefaultGroup            string      `json:"defaultGroup"`
 	DefaultGroupAlwaysAllow bool        `json:"defaultGroupAlwaysAllow"`
 	Groups                  GroupsEntry `json:"groups"`
 }
 
 type MsgCreateNewGroup struct {
-	ActionName string `json:"action"`
-	Hash       string `json:"hash"`
-	Version    string `json:"version"`
-	Id         string `json:"id"`
-	Nonce      string `json:"nonce"`
-	GroupName  string `json:"groupName"`
-	Success    string `json:"success"`
+	MsgBase
+	GroupName string `json:"groupName"`
 }
 
 type MsgGetTotp struct {
-	ActionName string `json:"action"`
-	Hash       string `json:"hash"`
-	Version    string `json:"version"`
-	Id         string `json:"id"`
-	Nonce      string `json:"nonce"`
-	Totp       string `json:"totp"`
-	Uuid       string `json:"uuid"`
-	Success    string `json:"success"`
+	MsgBase
+	Totp string `json:"totp"`
+	Uuid string `json:"uuid"`
 }
 
-func GetMessageType(action string) (ret interface{}, err error) {
+func GetMessageType(action string) (ret MsgI, err error) {
 	switch action {
 	case "change-public-keys":
 		return nil, nil
 	case "get-databasehash":
-		return &MsgGetDatabasehash{ActionName: action}, nil
+		return &MsgGetDatabasehash{MsgBase: MsgBase{ActionName: action}}, nil
 	case "associate", "test-associate":
-		return &MsgAssociate{ActionName: action}, nil
+		return &MsgAssociate{MsgBase: MsgBase{ActionName: action}}, nil
 	case "generate-password":
-		return &MsgGeneratePassword{ActionName: action}, nil
+		return &MsgGeneratePassword{MsgBase: MsgBase{ActionName: action}}, nil
 	case "get-logins":
-		return &MsgGetLogins{ActionName: action}, nil
+		return &MsgGetLogins{MsgBase: MsgBase{ActionName: action}}, nil
 	case "set-login":
-		return &MsgSetLogin{ActionName: action}, nil
+		return &MsgSetLogin{MsgBase: MsgBase{ActionName: action}}, nil
 	case "lock-database", "database-locked":
-		return &MsgLockDatabase{ActionName: action}, nil
+		return &MsgLockDatabase{MsgBase: MsgBase{ActionName: action}}, nil
 	case "get-database-groups":
-		return &MsgGetDatabaseGroups{ActionName: action}, nil
+		return &MsgGetDatabaseGroups{MsgBase: MsgBase{ActionName: action}}, nil
 	case "create-new-group":
-		return &MsgCreateNewGroup{ActionName: action}, nil
+		return &MsgCreateNewGroup{MsgBase: MsgBase{ActionName: action}}, nil
 	case "get-totp":
-		return &MsgGetTotp{ActionName: action}, nil
+		return &MsgGetTotp{MsgBase: MsgBase{ActionName: action}}, nil
 	}
 
 	return nil, fmt.Errorf("Unknown action: %s", action)

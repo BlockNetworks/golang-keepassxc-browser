@@ -128,6 +128,9 @@ func (c *Client) postMsg(req, res *ConnMsg) (err error) {
 		if err = json.Unmarshal(jdata, res.data); err != nil {
 			return err
 		}
+		if !res.data.IsSuccess() {
+			return fmt.Errorf("Unknown Error")
+		}
 	}
 
 	return nil
@@ -171,10 +174,6 @@ func (c *Client) GetDatabasehash() (ret *MsgGetDatabasehash, err error) {
 	}
 	ret = res.data.(*MsgGetDatabasehash)
 
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
-
 	return ret, nil
 }
 
@@ -191,10 +190,6 @@ func (c *Client) Associate() (ret *MsgAssociate, err error) {
 		return nil, err
 	}
 	ret = res.data.(*MsgAssociate)
-
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
 	c.AId = ret.Id
 
 	return ret, nil
@@ -214,10 +209,6 @@ func (c *Client) TestAssociate() (ret *MsgAssociate, err error) {
 	}
 	ret = res.data.(*MsgAssociate)
 
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
-
 	return ret, nil
 }
 
@@ -232,10 +223,6 @@ func (c *Client) GeneratePassword(timeout int) (ret *MsgGeneratePassword, err er
 		return nil, err
 	}
 	ret = res.data.(*MsgGeneratePassword)
-
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
 
 	return ret, nil
 }
@@ -262,10 +249,6 @@ func (c *Client) GetLogins(url, submitUrl, httpAuth string) (ret *MsgGetLogins, 
 	}
 	ret = res.data.(*MsgGetLogins)
 
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
-
 	return ret, nil
 }
 
@@ -289,10 +272,6 @@ func (c *Client) SetLogin(url, submitUrl, login, password, group, groupUuid, uui
 	}
 	ret = res.data.(*MsgSetLogin)
 
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
-
 	return ret, nil
 }
 
@@ -302,14 +281,8 @@ func (c *Client) LockDatabase() (err error) {
 		return err
 	}
 
-	res, err := c.SendMsg(req)
-	if err != nil {
-		return err
-	}
-	if res.data.(*MsgLockDatabase).Success != "true" {
-		return fmt.Errorf("Unknown Error")
-	}
-	return nil
+	_, err = c.SendMsg(req)
+	return err
 }
 
 func (c *Client) GetDatabaseGroups() (ret *MsgGetDatabaseGroups, err error) {
@@ -323,10 +296,6 @@ func (c *Client) GetDatabaseGroups() (ret *MsgGetDatabaseGroups, err error) {
 		return nil, err
 	}
 	ret = res.data.(*MsgGetDatabaseGroups)
-
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
 
 	return ret, nil
 }
@@ -344,10 +313,6 @@ func (c *Client) CreateNewGroup(groupName string) (ret *MsgCreateNewGroup, err e
 	}
 	ret = res.data.(*MsgCreateNewGroup)
 
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
-
 	return ret, nil
 }
 
@@ -363,10 +328,6 @@ func (c *Client) GetTotp(uuid string) (ret *MsgGetTotp, err error) {
 		return nil, err
 	}
 	ret = res.data.(*MsgGetTotp)
-
-	if ret.Success != "true" {
-		return ret, fmt.Errorf("Unknown Error")
-	}
 
 	return ret, nil
 }

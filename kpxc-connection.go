@@ -30,7 +30,7 @@ type ConnMsg struct {
 	Error      string `json:"error"`
 	ErrorCode  string `json:"errorCode"`
 	Version    string `json:"version"`
-	data       interface{}
+	data       MsgI
 	nonce      sodium.BoxNonce
 }
 
