@@ -48,7 +48,7 @@ func (conn *StdinoutConnection) Recv(bufsize int, timeout int) (ret []byte, err 
 
 	blen := make([]byte, 4)
 	if timeout > 0 {
-		os.Stdout.SetReadDeadline(time.Now().Add(time.Duration(time.Second * time.Duration(timeout))))
+		os.Stdin.SetReadDeadline(time.Now().Add(time.Duration(time.Second * time.Duration(timeout))))
 	}
 	_, err = conn.in.Read(blen)
 	if err != nil {

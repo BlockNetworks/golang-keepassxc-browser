@@ -28,8 +28,6 @@ func (s *Server) recvReq(timeout int) (err error) {
 	if err != nil {
 		return err
 	}
-	//slog.LOG_DEBUGF("hreq: %v\n", hres)
-	//slog.LOG_DEBUGF("hreq: %s\n", hres)
 
 	ljres := make([]byte, 4)
 	binary.LittleEndian.PutUint32(ljres, uint32(len(hres)))

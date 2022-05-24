@@ -34,6 +34,10 @@ type ConnMsg struct {
 	nonce      sodium.BoxNonce
 }
 
+func (c *ConnMsg) GetData() interface{} {
+	return c.data
+}
+
 func ParseConnMsg(bmsg []byte) (ret *ConnMsg, err error) {
 	ret = new(ConnMsg)
 	if err = json.Unmarshal(bmsg, ret); err != nil {

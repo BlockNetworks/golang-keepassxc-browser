@@ -5,8 +5,6 @@ import (
 	"os"
 	"path"
 	"runtime"
-
-	"gitea.olznet.de/OlzNet/slog"
 )
 
 type KpXcProxy struct {
@@ -14,19 +12,14 @@ type KpXcProxy struct {
 }
 
 func (k *KpXcProxy) HandleReq(breq []byte) (res []byte, err error) {
-	slog.LOG_DEBUGF("breq: %v\n", breq)
-	slog.LOG_DEBUGF("breq: %s\n", breq)
 
 	if err = k.conn.Send(breq); err != nil {
-		slog.LOG_DEBUGF("err: %v\n", err)
 		return res, err
 	}
 
 	if res, err = k.conn.Recv(BufSize, 0); err != nil {
 		return res, err
 	}
-	slog.LOG_DEBUGF("res: %v\n", res)
-	slog.LOG_DEBUGF("res: %s\n", res)
 
 	return res, err
 }
@@ -62,7 +55,6 @@ func NewKpXcProxy() (ret *KpXcProxy, err error) {
 		return serv, fmt.Errorf("Operating System: '%s' not supported", oss)
 	}
 
-	slog.LOG_DEBUGF("serverAddress: %s\n", serverAddress)
 	if err = serv.conn.Connect(serverAddress); err != nil {
 		return serv, err
 	}
